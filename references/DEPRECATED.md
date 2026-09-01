@@ -1,332 +1,281 @@
-# Deprecated Patterns and GODEBUG Reference
+# Deprecations, Removals and Compatibility Switches
 
-This reference lists all deprecated patterns, removed features, and GODEBUG settings
-for Go 1.22 through Go 1.26. For the quick reference, see the main [SKILL.md](../SKILL.md).
+Everything Go 1.22 -- 1.27 took away, changed under you, or left behind a knob for.
+The quick reference lives in [SKILL.md](../SKILL.md).
 
----
-
-## Table of Contents
-
-- [Deprecated APIs and Their Replacements](#deprecated-apis-and-their-replacements)
-- [Removed Features](#removed-features)
-- [GODEBUG Settings](#godebug-settings)
-- [Breaking Behavioral Changes](#breaking-behavioral-changes)
-- [Security-Related Changes](#security-related-changes)
-- [Platform Changes](#platform-changes)
+- [Deprecated APIs](#deprecated-apis)
+- [Removed](#removed)
+- [GODEBUG settings](#godebug-settings)
+- [GOEXPERIMENT flags](#goexperiment-flags)
+- [Breaking behaviour changes](#breaking-behaviour-changes)
+- [Security defaults](#security-defaults)
+- [Platforms and toolchain support](#platforms-and-toolchain-support)
 
 ---
 
-## Deprecated APIs and Their Replacements
+## Deprecated APIs
 
-### math/rand (replaced by math/rand/v2, Go 1.22)
+### math/rand -> math/rand/v2 (1.22)
 
-| Deprecated | Replacement | Notes |
-|---|---|---|
-| `math/rand.Seed(n)` | Remove entirely | Auto-seeded since 1.20; no-op since 1.24 |
-| `math/rand.Read(b)` | `crypto/rand.Read(b)` | Deprecated since 1.20 |
-| `math/rand.Intn(n)` | `math/rand/v2.IntN(n)` | Capital N convention |
-| `math/rand.Int31()` | `math/rand/v2.Int32()` | Consistent naming |
-| `math/rand.Int31n(n)` | `math/rand/v2.Int32N(n)` | |
-| `math/rand.Int63()` | `math/rand/v2.Int64()` | |
-| `math/rand.Int63n(n)` | `math/rand/v2.Int64N(n)` | |
-| `math/rand.NewSource(seed)` | `rand.NewPCG(s1, s2)` or `rand.NewChaCha8(seed)` | Named generators |
-| `math/rand.Source64` interface | Single `Uint64` method on `Source` | No separate interface in v2 |
-| `golang.org/x/exp/rand` | `math/rand/v2` | Experimental superseded |
-
-New in v2: `rand.N[T](max)` generic function, `UintN`, `Uint32`, `Uint64`, etc.
-Default generator: ChaCha8 (cryptographically strong).
-
-### runtime.SetFinalizer (replaced by AddCleanup, Go 1.24)
-
-| Deprecated | Replacement | Notes |
-|---|---|---|
-| `runtime.SetFinalizer(obj, fn)` | `runtime.AddCleanup(obj, fn, arg)` | New code should use AddCleanup |
-
-AddCleanup advantages:
-- Multiple cleanups per object (SetFinalizer allows only one)
-- No object resurrection (cleanup receives arg, not the object)
-- Works with interior pointers
-- Cycles of objects with cleanups can be GC'd
-- Cleaner API with explicit argument passing
-
-### crypto/rsa Encryption (Go 1.26)
-
-| Deprecated | Replacement | Notes |
-|---|---|---|
-| `rsa.EncryptPKCS1v15(rand, pub, msg)` | `rsa.EncryptOAEP(hash, rand, pub, msg, label)` | PKCS#1 v1.5 is unsafe |
-| `rsa.DecryptPKCS1v15(rand, priv, ct)` | `rsa.DecryptOAEP(hash, rand, priv, ct, label)` | |
-| `rsa.DecryptPKCS1v15SessionKey(...)` | OAEP-based alternatives | |
-| `rsa.GenerateMultiPrimeKey(...)` | `rsa.GenerateKey(nil, bits)` | Multi-prime deprecated |
-
-### crypto/ecdsa Fields (Go 1.26)
-
-| Deprecated | Notes |
+| Deprecated | Replacement |
 |---|---|
-| `ecdsa.PublicKey.X`, `ecdsa.PublicKey.Y` (big.Int) | Use alternative representations |
-| `ecdsa.PrivateKey.D` (big.Int) | Use alternative representations |
+| `rand.Seed(n)` | Delete it. Auto-seeded since 1.20, a no-op since 1.24 |
+| `rand.Read(b)` | `crypto/rand.Read(b)` |
+| `rand.Intn(n)` | `rand/v2.IntN(n)` |
+| `rand.Int31()` / `Int31n(n)` | `rand/v2.Int32()` / `Int32N(n)` |
+| `rand.Int63()` / `Int63n(n)` | `rand/v2.Int64()` / `Int64N(n)` |
+| `rand.NewSource(seed)` | `rand/v2.NewPCG(s1, s2)` or `NewChaCha8(seed)` |
+| `rand.Source64` | `rand/v2.Source` (one `Uint64` method) |
+| `golang.org/x/exp/rand` | `math/rand/v2` |
 
-### crypto Random Readers (Go 1.26)
+v2 adds the generic `rand.N[T](max)` (and, since 1.27, `(*Rand).N`). The default generator
+is ChaCha8.
 
-All crypto functions that accepted `io.Reader` for randomness now **ignore** the
-parameter and always use the system's secure random source:
+### runtime.SetFinalizer -> runtime.AddCleanup (1.24)
+
+`AddCleanup` allows many cleanups per object, never resurrects the object, works with
+interior pointers, and lets cycles of cleanup-bearing objects be collected. `SetFinalizer`
+does none of that.
+
+### crypto (1.26 / 1.27)
+
+| Deprecated | Replacement | Since |
+|---|---|---|
+| `rsa.EncryptPKCS1v15` / `DecryptPKCS1v15` / `DecryptPKCS1v15SessionKey` | `rsa.EncryptOAEP` / `DecryptOAEP` | 1.26 |
+| `rsa.GenerateMultiPrimeKey` | `rsa.GenerateKey(nil, bits)` | 1.26 |
+| `ecdsa.PublicKey.X` / `.Y`, `ecdsa.PrivateKey.D` (`big.Int`) | `Bytes()` / `NewPublicKey` style APIs | 1.26 |
+| `tls.Config.Rand` | `cryptotest.SetGlobalRandom` for tests; nothing in production | 1.27 |
+| `cipher.NewOFB`, `NewCFBEncrypter`, `NewCFBDecrypter` | AEAD modes (`cipher.NewGCMWithRandomNonce`) | 1.24 |
+
+Since 1.26 every crypto function that took an `io.Reader` for randomness **ignores** it and
+uses the system CSPRNG. Pass `nil`:
 
 ```go
-// These all ignore the rand parameter -- pass nil
 ecdsa.GenerateKey(elliptic.P256(), nil)
 rsa.GenerateKey(nil, 2048)
 ecdh.P256().GenerateKey(nil)
 rand.Prime(nil, 64)
-ed25519.GenerateKey(nil)
 ```
 
-Exception: `ed25519.GenerateKey(rand)` still uses the reader if non-nil.
+`ed25519.GenerateKey(rand)` is the exception and still honours a non-nil reader.
+`GODEBUG=cryptocustomrand=1` restores the old behaviour temporarily.
 
-Use `testing/cryptotest.SetGlobalRandom(t, seed)` for deterministic testing.
-Revert with `GODEBUG=cryptocustomrand=1` (temporary, will be removed).
-
-### HTTP
+### Everything else
 
 | Deprecated | Replacement | Since |
 |---|---|---|
-| `httputil.ReverseProxy.Director` | `httputil.ReverseProxy.Rewrite` | 1.26 |
-
-### crypto/cipher
-
-| Deprecated | Replacement | Since |
-|---|---|---|
-| `cipher.NewOFB` | Modern AEAD modes (GCM) | 1.24 |
-| `cipher.NewCFBEncrypter` | Modern AEAD modes (GCM) | 1.24 |
-| `cipher.NewCFBDecrypter` | Modern AEAD modes (GCM) | 1.24 |
-
-### Other Deprecations
-
-| Deprecated | Replacement | Since |
-|---|---|---|
-| `runtime.GOROOT()` | Use `go env GOROOT` or build info | 1.24 |
-| `testing/synctest.Run` | `testing/synctest.Test` | 1.25 |
-| `go/parser.ParseDir` | -- | 1.25 |
-| `go/ast.FilterPackage` | -- | 1.25 |
-| `go/ast.PackageExports` | -- | 1.25 |
-| `go/ast.MergePackageFiles` | -- | 1.25 |
-| `go/ast.MergeMode` type | -- | 1.25 |
-| `crypto/elliptic.Inverse` | -- | Removed 1.25 |
-| `crypto/elliptic.CombinedMult` | -- | Removed 1.25 |
+| `httputil.ReverseProxy.Director` | `ReverseProxy.Rewrite` | 1.26 |
+| `testing/synctest.Run` | `synctest.Test` (removed in 1.26) | 1.25 |
+| `runtime.GOROOT()` | `go env GOROOT` or build info | 1.24 |
+| `go/parser.ParseDir` | Walk the directory yourself | 1.25 |
+| `go/ast.FilterPackage`, `PackageExports`, `MergePackageFiles`, `MergeMode` | -- | 1.25 |
 
 ---
 
-## Removed Features
+## Removed
 
-### Go 1.24
-- SHA-1 signature verification in `crypto/x509` (`x509sha1` GODEBUG removed)
-- `go get` in legacy GOPATH mode (removed in 1.22)
+| Release | Removed |
+|---|---|
+| 1.24 | SHA-1 signature verification in `crypto/x509` (and `GODEBUG=x509sha1`) |
+| 1.25 | `crypto/elliptic.Inverse`, `CombinedMult`; `GODEBUG=runtimecontentionstacks` |
+| 1.26 | `cmd/doc` / `go tool doc` (use `go doc`); `testing/synctest.Run`; `windows/arm` (32-bit); `signext` and `satconv` GOWASM settings; all historical `go fix` fixers |
+| 1.27 | `bzr` support in the `go` command; `GODEBUG` `asynctimerchan`, `gotypesalias`, `tlsunsafeekm`, `tlsrsakex`, `tls3des`, `tls10server`, `x509keypairleaf`; `GOEXPERIMENT=goroutineleakprofile` (the profile is now GA); the `fmtappendf` `go fix` analyzer; `go fix -waitgroup` (renamed `-waitgroupgo`) |
 
-### Go 1.25
-- `crypto/elliptic.Inverse` and `CombinedMult` (undocumented methods)
-- `runtimecontentionstacks` GODEBUG setting
+Announced for later removal:
 
-### Go 1.26
-- `cmd/doc` and `go tool doc` (use `go doc` instead)
-- `windows/arm` (32-bit) port
-- `signext` and `satconv` GOWASM settings (now unconditional)
-- All historical `go fix` fixers (replaced by analysis-based fixers)
-- `testing/synctest.Run` (use `Test` instead)
+| Setting | Removal |
+|---|---|
+| `GOEXPERIMENT=nosizespecializedmalloc` | 1.28 |
+| `GODEBUG=gotestjsonbuildtext` | 1.28 at the earliest |
+| `GODEBUG=x509sslcertoverrideplatform` | 1.31 |
+| `GODEBUG=fips140ems` | 1.31 |
+| `GOEXPERIMENT=nojsonv2` | unscheduled; file an issue instead of relying on it |
+| `GODEBUG=cryptocustomrand` | unscheduled, but temporary by design |
 
-### Scheduled for Removal in Go 1.27
-- `GODEBUG=asynctimerchan` (timer channel buffering)
-- `GODEBUG=gotypesalias` (type alias behavior)
-- `GOEXPERIMENT=nogreenteagc` (Green Tea GC opt-out)
-- `GODEBUG=tlsunsafeekm`
-- `GODEBUG=tlsrsakex`
-- `GODEBUG=tls10server`
-- `GODEBUG=tls3des`
-- `GODEBUG=x509keypairleaf`
-- `GODEBUG=cryptocustomrand`
-- `GODEBUG=urlstrictcolons`
+Since 1.27 the `go` command still **accepts** a removed GODEBUG in `go.mod` (`godebug`) or a
+`//go:debug` comment as long as it is set to the value that was the default when it was
+removed. Setting it to the old value is a build error.
 
 ---
 
-## GODEBUG Settings
+## GODEBUG settings
 
-### Go 1.22 Settings
+Defaults below are what Go 1.27 uses. All are settable through the `GODEBUG` environment
+variable, a `godebug` line in `go.mod`, or a `//go:debug` comment.
 
-| Setting | Default | Description |
+### HTTP, URL and templates
+
+| Setting | Default | Effect of the non-default value |
 |---|---|---|
-| `httpmuxgo121=1` | 0 (new routing) | Revert to Go 1.21 ServeMux routing |
-| `tlsmaxrsasize=N` | 8192 | Max RSA key size in TLS handshakes |
-| `tls10server=1` | 0 (TLS 1.2 min) | Allow TLS 1.0/1.1 for servers |
-| `tlsrsakex=1` | 0 (disabled) | Enable RSA key exchange in TLS |
-| `httplaxcontentlength=1` | 0 | Lax Content-Length parsing |
-| `disablethp=1` | 0 | Disable transparent huge pages |
+| `httpmuxgo121` | `0` | `1` restores Go 1.21 `ServeMux` (no methods or wildcards) |
+| `httplaxcontentlength` | `0` | `1` accepts an empty `Content-Length` header |
+| `httpservecontentkeepheaders` | `0` | `1` keeps caching headers when `ServeContent` serves an error |
+| `httpcookiemaxnum` | `3000` | Max cookies parsed per request; `0` = unlimited (1.26) |
+| `http2server` / `http2client` / `http2debug` | on | Disable or trace built-in HTTP/2 |
+| `urlmaxqueryparams` | `10000` | Max query parameters; `0` = unlimited (1.26) |
+| `urlstrictcolons` | `1` | `0` re-allows `http://localhost:1:2` style hosts (1.26) |
+| `htmlmetacontenturlescape` | `1` | `0` stops escaping URLs in `<meta content=...>` (1.27; backported to 1.25.8 / 1.26.1) |
+| `multipartmaxheaders` / `multipartmaxparts` | limited | Raise or remove MIME limits |
 
-### Go 1.23 Settings
+### Crypto and TLS
 
-| Setting | Default | Description |
+| Setting | Default | Effect of the non-default value |
 |---|---|---|
-| `asynctimerchan=1` | 0 (unbuffered) | Timer channel uses old buffered behavior |
-| `tls3des=1` | 0 (disabled) | Enable 3DES cipher suites |
-| `x509negativeserial=1` | 0 (reject) | Allow negative certificate serial numbers |
-| `x509keypairleaf=0` | 1 (populate) | Don't populate X509KeyPair Leaf field |
-| `winsymlink=0` | 1 | Disable Windows symlink mode bits |
-| `winreadlinkvolume=0` | 1 | Disable Windows Readlink volume normalization |
+| `fips140` | `off` | `on` / `only` for FIPS 140-3 mode (fixed at startup) |
+| `fips140ems` | `1` | `0` disables Extended Master Secret enforcement in FIPS mode (1.27) |
+| `cryptocustomrand` | `0` | `1` honours custom `io.Reader` randomness again (1.26) |
+| `rsa1024min` | `1` | `0` allows RSA keys under 1024 bits (1.24) |
+| `tlsmaxrsasize` | `8192` | Max RSA key size accepted in a handshake |
+| `tlsmlkem` | `1` | `0` drops X25519MLKEM768 from the default curves (1.24) |
+| `tlssecpmlkem` | `1` | `0` drops the SecP MLKEM hybrids (1.26) |
+| `tlssha1` | `0` | `1` re-enables SHA-1 in TLS 1.2 handshakes (1.25) |
+| `dataindependenttiming` | `0` | `1` enables DIT mode program-wide (arm64) |
+| `x509negativeserial` | `0` | `1` accepts negative certificate serial numbers |
+| `x509rsacrt` | `1` | `0` skips CRT parameter validation |
+| `x509sha256skid` | `1` | `0` reverts `SubjectKeyId` to SHA-1 |
+| `x509usepolicies` | `1` | `0` marshals from `PolicyIdentifiers` |
+| `x509usefallbackroots` | on | Fallback root behaviour |
+| `x509sslcertoverrideplatform` | `1` | `0` ignores `SSL_CERT_FILE`/`SSL_CERT_DIR` on Windows/Darwin (1.27) |
 
-### Go 1.24 Settings
+Note the 1.27 default: when `SSL_CERT_FILE` or `SSL_CERT_DIR` is set on Windows or macOS,
+`SystemCertPool` loads roots from disk and switches to the pure-Go verifier instead of the
+platform APIs.
 
-| Setting | Default | Description |
+### Runtime and toolchain
+
+| Setting | Default | Effect of the non-default value |
 |---|---|---|
-| `fips140=off\|on\|only` | off | FIPS 140-3 mode |
-| `randseednop=0` | 1 (no-op) | Make `math/rand.Seed` functional again |
-| `rsa1024min=0` | 1 (enforce) | Allow RSA keys < 1024 bits |
-| `x509rsacrt=0` | 1 (validate) | Skip CRT parameter validation |
-| `x509usepolicies=0` | 1 | Use old `PolicyIdentifiers` field |
-| `gotestjsonbuildtext=1` | 0 (JSON) | `go test -json` build error format |
-| `multipathtcp=N` | 2 (listeners) | Multipath TCP enablement |
-| `tlsmlkem=0` | 1 (enabled) | Disable post-quantum key exchange |
+| `containermaxprocs` | `1` | `0` ignores cgroup CPU limits when choosing `GOMAXPROCS` (1.25) |
+| `updatemaxprocs` | `1` | `0` stops periodic `GOMAXPROCS` refresh (1.25) |
+| `decoratemappings` | `1` | `0` drops `[anon: Go: ...]` annotations in `/proc` maps (1.25) |
+| `tracebacklabels` | `1` | `0` omits pprof goroutine labels from traceback headers (default flipped in 1.27) |
+| `panicnil` | `0` | `1` restores `panic(nil)` as a nil panic |
+| `randseednop` | `1` | `0` makes `math/rand.Seed` functional again (1.24) |
+| `randautoseed` | on | Global `math/rand` auto-seeding |
+| `execerrdot` | on | Reject `PATH` lookups resolving into the current directory |
+| `gotestjsonbuildtext` | `0` | `1` emits build errors as text in `go test -json` |
+| `allowmultiplevcs` | `0` | `1` stamps build info when several VCS dirs are present |
+| `embedfollowsymlinks` | `0` | `1` lets `//go:embed` follow symlinks (1.25) |
+| `installgoroot`, `gocacheverify`, `gocachehash`, `gocachetest` | -- | Build/cache debugging |
+| `tarinsecurepath` / `zipinsecurepath` | `1` | `0` rejects insecure archive paths |
 
-### Go 1.25 Settings
+### OS and net
 
-| Setting | Default | Description |
+| Setting | Default | Effect of the non-default value |
 |---|---|---|
-| `containermaxprocs=0` | 1 (enabled) | Ignore cgroup CPU limits for GOMAXPROCS |
-| `updatemaxprocs=0` | 1 (enabled) | Don't auto-update GOMAXPROCS |
-| `tlssha1=1` | 0 (disabled) | Allow SHA-1 in TLS 1.2 handshakes |
-| `x509sha256skid=0` | 1 (SHA-256) | Use SHA-1 for SubjectKeyId |
-| `allowmultiplevcs=1` | 0 (disabled) | Allow multiple VCS metadata dirs |
-| `decoratemappings=0` | 1 (enabled) | Disable OS memory mapping annotations |
-| `embedfollowsymlinks=1` | 0 (disabled) | Follow symlinks in embed |
-
-### Go 1.26 Settings
-
-| Setting | Default | Description |
-|---|---|---|
-| `cryptocustomrand=1` | 0 (ignore) | Honor custom random reader in crypto funcs |
-| `httpcookiemaxnum=N` | 3000 | Max cookies per HTTP request |
-| `urlmaxqueryparams=N` | 10000 | Max URL query parameters |
-| `urlstrictcolons=0` | 1 (strict) | Allow malformed URLs with colons in host |
-| `tlssecpmlkem=0` | 1 (enabled) | Disable SecP MLKEM post-quantum KEM |
-
-### GOEXPERIMENT Flags
-
-| Flag | Since | Status | Description |
-|---|---|---|---|
-| `GOEXPERIMENT=rangefunc` | 1.22 | Stable in 1.23 | Range over function iterators |
-| `GOEXPERIMENT=aliastypeparams` | 1.23 | Stable in 1.24 | Generic type aliases |
-| `GOEXPERIMENT=synctest` | 1.24 | Stable in 1.25 | testing/synctest package |
-| `GOEXPERIMENT=jsonv2` | 1.25 | Experimental | encoding/json/v2 |
-| `GOEXPERIMENT=greenteagc` | 1.25 | Default in 1.26 | Green Tea garbage collector |
-| `GOEXPERIMENT=nogreenteagc` | 1.26 | Opt-out (removed in 1.27) | Disable Green Tea GC |
-| `GOEXPERIMENT=simd` | 1.26 | Experimental | SIMD/vectorized operations (amd64) |
-| `GOEXPERIMENT=runtimesecret` | 1.26 | Experimental | secret.Do for forward secrecy |
-| `GOEXPERIMENT=goroutineleakprofile` | 1.26 | Experimental | Goroutine leak detection |
-| `GOEXPERIMENT=nosizespecializedmalloc` | 1.26 | Opt-out (removed in 1.27) | Disable optimized small allocs |
-| `GOEXPERIMENT=norandomizedheapbase64` | 1.26 | Opt-out | Disable heap address randomization |
+| `multipathtcp` | `2` | MPTCP: `0` off, `1` both, `2` listeners, `3` dialers (1.24) |
+| `netdns` | auto | Force the pure-Go or cgo resolver |
+| `netedns0` | `1` | `0` stops sending EDNS0 headers |
+| `winsymlink` | `1` | `0` treats Windows mount points as symlinks again (1.23) |
+| `winreadlinkvolume` | `1` | `0` normalises volumes to drive letters again (1.23) |
 
 ---
 
-## Breaking Behavioral Changes
+## GOEXPERIMENT flags
 
-### Go 1.22
-- **Loop variable scoping**: Each `for` loop iteration creates new variables (controlled by go.mod version).
-- **ServeMux routing**: Patterns with `{` and `}` are now interpreted as wildcards. Set `httpmuxgo121=1` to revert.
-- **slices.Insert**: Now always panics if index is out of range (even with zero elements to insert).
-- **slices.Delete/Compact/Replace**: Now zero elements between new and old length.
+Enabled by default in Go 1.27 -- the listed opt-out is temporary:
 
-### Go 1.23
-- **Timer/Ticker channels**: Unbuffered (capacity 0). No stale values after Stop/Reset. Unreferenced timers/tickers are GC-eligible. Controlled by go.mod version.
-- **`//go:linkname` restrictions**: Linker disallows referencing unmarked internal stdlib symbols.
-- **macOS**: Minimum macOS 11 Big Sur required.
+| Experiment | Default since | Opt-out |
+|---|---|---|
+| `greenteagc` | 1.26 | `GOEXPERIMENT=nogreenteagc` |
+| `jsonv2` | 1.27 | `GOEXPERIMENT=nojsonv2` |
+| `sizespecializedmalloc` | 1.27 | `GOEXPERIMENT=nosizespecializedmalloc` (goes away in 1.28) |
+| `randomizedheapbase64` | 1.26 | `GOEXPERIMENT=norandomizedheapbase64` |
 
-### Go 1.24
-- **crypto/x509**: SHA-1 signature verification removed entirely.
-- **crypto/rsa**: Keys < 1024 bits rejected by default.
-- **math/rand.Seed**: Becomes a no-op globally.
-- **Swiss Tables**: Map implementation changed. `reflect.DeepEqual` on `sync.Map` may differ.
-- **os.Root**: `Root.Open("../")` initially allowed parent directory access; fixed in 1.24.3.
+Opt-in and still experimental in 1.27:
 
-### Go 1.25
-- **SHA-1 in TLS 1.2**: Disabled by default per RFC 9155.
-- **SubjectKeyId**: `CreateCertificate` uses SHA-256 instead of SHA-1.
-- **testing/synctest**: `Run` function deprecated; use `Test`.
-- **testing.AllocsPerRun**: Panics if parallel tests are running.
+| Experiment | Enables |
+|---|---|
+| `simd` | The portable `simd` package and architecture-specific `simd/archsimd` (amd64, arm64 Neon, wasm) |
+| `runtimesecret` | `runtime/secret`; secret mode now propagates to goroutines started inside it |
+| `runtimefreegc` | More eager memory reuse with compiler assistance |
+| `mapsplitgroup` | Split key/elem arrays in map groups instead of interleaved slots |
+| `arenas`, `cgocheck2`, `newinliner`, `boringcrypto` | Long-standing niche experiments |
 
-### Go 1.26
-- **image/jpeg**: New encoder/decoder may produce different bit-for-bit output.
-- **net/url.Parse**: Rejects malformed URLs with colons in host.
-- **Crypto random readers**: Ignored in most crypto functions.
-- **net/http cookies**: Use `Request.Host` for scoping.
-- **cmd/doc**: Removed (use `go doc`).
+Graduated (the flag no longer exists): `rangefunc` (1.23), `aliastypeparams` (1.24),
+`synctest` (1.25), `goroutineleakprofile` (1.27).
 
 ---
 
-## Security-Related Changes
+## Breaking behaviour changes
 
-### Crypto Minimums
+**1.22** -- Loop variables are per-iteration (gated on the `go` directive).
+`ServeMux` reads `{`/`}` as wildcards. `slices.Insert` always panics on an out-of-range
+index. `slices.Delete`/`Compact`/`Replace` zero the vacated tail.
+
+**1.23** -- Timer and Ticker channels are unbuffered, with no stale value after `Stop`/
+`Reset`, and unreferenced timers are collectable (gated on the `go` directive).
+`//go:linkname` can no longer reach unmarked internal stdlib symbols. macOS 11 minimum.
+
+**1.24** -- SHA-1 certificate signatures no longer verify at all. RSA keys under 1024 bits
+are rejected. `math/rand.Seed` becomes a global no-op. Maps switch to Swiss Tables, so
+`reflect.DeepEqual` on a `sync.Map` may differ.
+
+**1.25** -- SHA-1 disabled in TLS 1.2 handshakes (RFC 9155). `CreateCertificate` fills
+`SubjectKeyId` with SHA-256. `testing.AllocsPerRun` panics while parallel tests run.
+
+**1.26** -- `image/jpeg` output is not bit-for-bit identical. `net/url.Parse` rejects
+malformed colons in the host. Crypto randomness readers are ignored. `cmd/doc` is gone.
+
+**1.27** -- `compress/flate` produces different bytes, so `gzip`, `zlib`, `zip` and `png`
+goldens may need regenerating; `unicode` jumps from 15 to 17 for the same reason.
+HTTP/1 `Response.Body` drains on `Close` (<=256 KiB, <=50 ms). HTTP/2 servers honour RFC
+9218 client priorities (`Server.DisableClientPriority` reverts). Requests are limited to
+`DefaultMaxHeaderValueCount` (500) header values. `net.UnixConn` reads return bare
+`io.EOF` instead of a wrapped `*net.OpError`. Function-literal symbol names changed and may
+now be shared, so comparing function code pointers is even less reliable. Relative `//line`
+paths resolve against the containing file's directory.
+
+---
+
+## Security defaults
+
 | Requirement | Since | Override |
 |---|---|---|
-| TLS 1.2 minimum for servers | 1.22 | `tls10server=1` |
-| RSA key exchange disabled | 1.22 | `tlsrsakex=1` |
-| 3DES cipher suites disabled | 1.23 | `tls3des=1` |
-| SHA-1 X.509 signatures removed | 1.24 | None (permanently removed) |
-| RSA minimum 1024-bit keys | 1.24 | `rsa1024min=0` |
-| SHA-1 in TLS 1.2 handshakes disabled | 1.25 | `tlssha1=1` |
-| PKCS#1 v1.5 encryption deprecated | 1.26 | Use OAEP instead |
+| TLS 1.2 minimum for servers | 1.22 | none since 1.27 (`tls10server` removed) |
+| RSA key exchange disabled | 1.22 | none since 1.27 (`tlsrsakex` removed) |
+| 3DES suites disabled | 1.23 | none since 1.27 (`tls3des` removed) |
+| SHA-1 X.509 signatures rejected | 1.24 | none, permanently |
+| RSA keys >= 1024 bits | 1.24 | `rsa1024min=0` |
+| SHA-1 disabled in TLS 1.2 | 1.25 | `tlssha1=1` |
+| PKCS#1 v1.5 encryption deprecated | 1.26 | use OAEP |
 | Custom crypto randomness ignored | 1.26 | `cryptocustomrand=1` |
+| Cookies capped at 3000/request | 1.26 | `httpcookiemaxnum` |
+| Query parameters capped at 10000 | 1.26 | `urlmaxqueryparams` |
+| Header values capped at 500/request | 1.27 | `Server.MaxHeaderValueCount` |
+| `<meta content=...>` URLs escaped | 1.27 | `htmlmetacontenturlescape=0` |
 
-### Post-Quantum Cryptography
-| Feature | Since | Override |
-|---|---|---|
-| X25519MLKEM768 in TLS | 1.24 | `tlsmlkem=0` |
-| `crypto/mlkem` package (FIPS 203) | 1.24 | -- |
-| SecP256r1MLKEM768, SecP384r1MLKEM1024 in TLS | 1.26 | `tlssecpmlkem=0` |
-| `crypto/hpke` (RFC 9180) | 1.26 | -- |
-
-### HTTP Cookie Limit (Go 1.26)
-`net/http` now limits cookies to 3,000 per request to prevent memory exhaustion
-(CVE-2025-58186). Configurable via `GODEBUG=httpcookiemaxnum=N`.
-
-### HTTP URL Query Limit (Go 1.26)
-URL query parameter count limited to 10,000 by default.
-Configurable via `GODEBUG=urlmaxqueryparams=N`.
+Post-quantum status: `crypto/mlkem` (FIPS 203) since 1.24 with X25519MLKEM768 on by
+default; SecP256r1MLKEM768 and SecP384r1MLKEM1024 on by default since 1.26; `MLKEM1024`
+opt-in via `Config.CurvePreferences` and `crypto/mldsa` (FIPS 204) signatures, including
+TLS 1.3 `MLDSA44/65/87`, since 1.27. From 1.27 the hybrids can be requested explicitly in
+`CurvePreferences` even when `tlsmlkem=0` or `tlssecpmlkem=0`.
 
 ---
 
-## Platform Changes
+## Platforms and toolchain support
 
-### Go 1.26 Platform Notes
-| Platform | Change |
-|---|---|
-| macOS 12 Monterey | Last supported in Go 1.26. Go 1.27 requires macOS 13+ |
-| linux/riscv64 | Race detector now supported |
-| s390x | Register-based function calling |
-| windows/arm (32-bit) | Removed |
-| freebsd/riscv64 | Broken (issue #76475) |
-| PowerPC ELFv1 | Last supported in Go 1.26. Go 1.27 switches to ELFv2 |
-| WebAssembly | Sign extension and non-trapping float-to-int mandatory |
-| windows/arm64 | cgo internal linking supported |
-
-### Minimum Requirements
 | Requirement | Version |
 |---|---|
-| macOS | 11 Big Sur (1.23+), 13 Ventura (1.27+) |
-| Linux kernel | 3.2+ (since 1.24) |
-| Bootstrap compiler | Go 1.24.6+ (for building 1.26) |
+| macOS | 12 Monterey through 1.26 (its last release), **13 Ventura from 1.27** |
+| Linux kernel | 3.2+ (1.24+); 3.13+ for `linux/ppc64` in 1.27 |
+| Bootstrap toolchain | Go 1.24.6+ builds 1.26 and 1.27 |
 
----
+1.27 platform notes: `linux/ppc64` (big-endian) switches to the ELFv2 ABI and gains cgo,
+PIE and external linking; `windows/arm` (32-bit) was removed in 1.26; `linux/riscv64`
+supports the race detector and s390x uses register-based calls since 1.26.
 
-## Notable CVEs Fixed in Patch Releases
+### Support policy
 
-These are the most impactful security fixes across 1.22.x -- 1.26.x patch releases
-that may affect application behavior:
+Only the two most recent major releases get security fixes. As of the Go 1.27.0 release
+(2026-08-19) that means **1.27.x and 1.26.x**; 1.25 and older are end of life.
 
-| CVE | Version | Impact |
-|---|---|---|
-| CVE-2023-45288 | 1.22.2 | HTTP/2 continuation flood (CPU exhaustion) |
-| CVE-2024-24790 | 1.22.4 | `netip.Is*` methods wrong for IPv4-mapped IPv6 |
-| CVE-2024-24791 | 1.22.5 | HTTP/1.1 Expect: 100-continue denial of service |
-| CVE-2024-34156 | 1.22.7/1.23.1 | encoding/gob stack exhaustion |
-| CVE-2024-45336 | 1.22.11/1.23.5 | HTTP sensitive header restoration after redirect |
-| CVE-2025-22871 | 1.23.8/1.24.2 | HTTP request smuggling via bare LF in chunks |
-| CVE-2025-22873 | 1.24.3 | os.Root parent directory escape |
-| CVE-2025-4674 | 1.23.11/1.24.5 | VCS command execution in go command |
-| CVE-2025-58186 | 1.24.8/1.25.2 | HTTP cookie parsing memory exhaustion |
-| CVE-2025-61732 | 1.24.13/1.25.7 | cgo code smuggling via comments |
-| CVE-2025-68121 | 1.24.12/1.25.6 | TLS session ticket key reuse |
+Minimum versions worth pinning today: **go1.27.0**, or **go1.26.7** on the previous line.
+Go shipped 2026 stdlib fixes for `os.Root` escapes (CVE-2026-32282, CVE-2026-39822),
+`html/template` escaper bypasses (CVE-2026-32289, CVE-2026-39823, CVE-2026-39826,
+CVE-2026-56858), `crypto/x509` verification bypasses (CVE-2026-33810), compiler
+miscompilations that broke memory safety (CVE-2026-27143, CVE-2026-27144), and checksum
+database bypasses in `cmd/go` (CVE-2026-42501, CVE-2026-56864, CVE-2026-56865).
+
+Do not enumerate CVEs by hand -- run `govulncheck ./...`, which reports only the ones your
+code actually reaches.

@@ -1,208 +1,274 @@
 ---
 name: go-latest-version
 description: >
-  Enforces modern Go standards and idioms for Go 1.22 through 1.26. Use when writing,
+  Enforces modern Go standards and idioms for Go 1.22 through 1.27. Use when writing,
   reviewing, or modifying Go code to ensure the latest language features, standard library
   APIs, and best practices are used. Prevents deprecated patterns and guides toward
   idiomatic modern Go.
 license: Apache-2.0
 metadata:
   author: FumingPower3925
-  version: "1.0"
-  go-versions: "1.22, 1.23, 1.24, 1.25, 1.26"
+  version: "2.0"
+  go-versions: "1.22, 1.23, 1.24, 1.25, 1.26, 1.27"
 ---
 
-# Modern Go Standards (1.22 -- 1.26)
+# Modern Go Standards (1.22 -- 1.27)
 
-You are writing Go code targeting the latest Go versions. Always prefer the most modern
-idiomatic pattern. If the project's `go.mod` specifies a version, respect that as the
-minimum feature set. When no version is specified, assume Go 1.26.
+Two rules govern everything below.
 
-For even more detailed examples, see [MODERN-PATTERNS.md](references/MODERN-PATTERNS.md).
-For full deprecation lists and GODEBUG settings, see [DEPRECATED.md](references/DEPRECATED.md).
+1. **The `go` line in `go.mod` is the floor.** Anything tagged `1.27` in the tables fails to
+   compile under `go 1.26`. Read `go.mod` before reaching for a version-gated feature. With no
+   `go.mod`, assume Go 1.27.
+2. **A replacement in these tables is not optional.** The old form is what `go fix`, `go vet`
+   and reviewers flag -- not a matter of taste.
 
----
-
-## Critical Rules
-
-1. **Never use deprecated APIs** when a modern replacement exists.
-2. **Check go.mod version** before using version-gated features.
-3. **Use `range` over integers** instead of C-style `for` loops (Go 1.22+).
-4. **Use iterators** (`iter.Seq`, `iter.Seq2`) for sequences (Go 1.23+).
-5. **Use `errors.AsType[T]`** instead of `errors.As` (Go 1.26+).
-6. **Use `new(expr)`** for inline pointer creation (Go 1.26+).
-7. **Use `b.Loop()`** instead of `for range b.N` in benchmarks (Go 1.24+).
-8. **Use `t.Context()`** instead of manually creating cancelable contexts in tests (Go 1.24+).
-9. **Use `sync.WaitGroup.Go()`** instead of manual `Add`/`Done` patterns (Go 1.25+).
-10. **Use `crypto/rand.Text()`** for random tokens instead of custom generators (Go 1.24+).
-11. **Pass `nil` for the `rand` parameter** in crypto functions (Go 1.26+).
-12. **Use `runtime.AddCleanup`** instead of `runtime.SetFinalizer` (Go 1.24+).
-13. **Use `omitzero`** instead of `omitempty` for struct fields in JSON tags (Go 1.24+).
-14. **Use `math/rand/v2`** instead of `math/rand` (Go 1.22+).
-15. **Use `os.Root`** for directory-scoped filesystem access (Go 1.24+).
-16. **Remove loop variable capture hacks** (`v := v`) -- per-iteration scoping is automatic (Go 1.22+).
+Deeper examples: [MODERN-PATTERNS.md](references/MODERN-PATTERNS.md).
+Removals, GODEBUG, platforms: [DEPRECATED.md](references/DEPRECATED.md).
 
 ---
 
-## Do This, Not That
+## Non-negotiables
 
-### Language & Syntax
+1. Never use a deprecated API when a modern replacement exists.
+2. `for i := range n`, never `for i := 0; i < n; i++`. (1.22)
+3. Delete every `v := v` loop-capture hack; loop vars are per-iteration. (1.22)
+4. `math/rand/v2`, never `math/rand`. (1.22)
+5. Model sequences as `iter.Seq` / `iter.Seq2`, not callback APIs. (1.23)
+6. Any path derived from untrusted input goes through `os.Root`. (1.24)
+7. `for b.Loop()`, never `for range b.N`. (1.24)
+8. `t.Context()` / `t.Chdir()` in tests; never hand-roll either. (1.24)
+9. `omitzero`, not `omitempty`, on struct and `time.Time` fields. (1.24)
+10. `runtime.AddCleanup`, never `runtime.SetFinalizer`. (1.24)
+11. `crypto/rand.Text()` for tokens; never a hand-written generator. (1.24)
+12. `wg.Go(f)`, never `wg.Add(1)` + `defer wg.Done()`. (1.25)
+13. Concurrency tests use `testing/synctest`; never `time.Sleep` to "let it settle". (1.25)
+14. `errors.AsType[T](err)`, never `errors.As(err, &target)`. (1.26)
+15. `new(expr)` for inline pointers; no one-shot temporaries. (1.26)
+16. Pass `nil` for every crypto `rand io.Reader` parameter. (1.26)
+17. Stdlib `uuid`, never `github.com/google/uuid` or friends. (1.27)
+18. `encoding/json/v2` for new code; `encoding/json` only for existing wire formats. (1.27)
+19. Run `go fix ./...` before calling a change done. (1.26)
+20. Target Go 1.27; only 1.26 and 1.27 still receive security fixes.
+
+---
+
+## Replace old with new
+
+### Language and syntax
 
 | Instead of (old) | Use (modern) | Since |
 |---|---|---|
 | `for i := 0; i < n; i++` | `for i := range n` | 1.22 |
-| `v := v` in loop closures | Remove it; loop vars are per-iteration | 1.22 |
+| `v := v` inside a loop body | Delete it | 1.22 |
+| `interface{}` | `any` | 1.18 |
+| `if a > b { m = a } else { m = b }` | `max(a, b)` / `min(a, b)` | 1.21 |
 | `p := 42; foo(&p)` | `foo(new(42))` | 1.26 |
-| `errors.As(err, &target)` | `errors.AsType[*T](err)` | 1.26 |
-| Custom iterator callbacks | `iter.Seq[V]` / `iter.Seq2[K, V]` with `for range` | 1.23 |
+| Package-level generic helper tied to one type | Generic **method** on that type | 1.27 |
+| `T{Embedded: E{Field: v}}` | `T{Field: v}` (promoted field key) | 1.27 |
+| `cmp.Compare[int]` in a func-typed position | `cmp.Compare` (inferred) | 1.27 |
 
-### Standard Library
+### Iteration
 
 | Instead of (old) | Use (modern) | Since |
 |---|---|---|
-| `math/rand.Intn(n)` | `math/rand/v2.IntN(n)` | 1.22 |
-| `math/rand.Seed(...)` | Remove it; auto-seeded since 1.20, no-op since 1.24 | 1.22 |
-| `math/rand.Int31()` / `Int63()` | `math/rand/v2.Int32()` / `Int64()` | 1.22 |
-| `math/rand.Read(b)` | `crypto/rand.Read(b)` | 1.22 |
-| `rand.NewSource(seed)` | `rand.NewPCG(s1, s2)` or `rand.NewChaCha8(seed)` | 1.22 |
-| `fmt.Sprintf` for errors | `fmt.Errorf` (now equally efficient) | 1.26 |
+| Callback-style `Each(func(v T) bool)` | `iter.Seq[V]` / `iter.Seq2[K, V]` | 1.23 |
+| `x.Len()` / `x.At(i)` index loops | The type's `All()` iterator | 1.23 |
+| `for i := len(s)-1; i >= 0; i--` | `for i, v := range slices.Backward(s)` | 1.23 |
+| Manual `for k, v := range src { dst[k] = v }` | `maps.Copy` / `Clone` / `Insert` / `Collect` | 1.23 |
+| `sort.Slice(s, less)` | `slices.SortFunc(s, cmp)` / `slices.Sort(s)` | 1.21 |
+| Manual "does it contain" loop | `slices.Contains` / `ContainsFunc` | 1.21 |
+| `for _, x := range strings.Split(s, ",")` | `for x := range strings.SplitSeq(s, ",")` | 1.24 |
+| `for _, w := range strings.Fields(s)` | `for w := range strings.FieldsSeq(s)` | 1.24 |
+| `bufio.Scanner` just to split a string | `for line := range strings.Lines(s)` | 1.24 |
+
+### Strings and bytes
+
+| Instead of (old) | Use (modern) | Since |
+|---|---|---|
+| `HasPrefix` + `TrimPrefix` | `strings.CutPrefix` (and `CutSuffix`) | 1.20 |
+| `Index` + manual slicing | `strings.Cut` | 1.18 |
+| `LastIndex` + manual slicing | `strings.CutLast` / `bytes.CutLast` | 1.27 |
+| `s += x` in a loop | `strings.Builder` | 1.10 |
+| `fmt.Sprintf("%s:%d", host, port)` for dialing | `net.JoinHostPort(host, port)` -- IPv6-safe | -- |
+
+### Errors
+
+| Instead of (old) | Use (modern) | Since |
+|---|---|---|
+| `var t *T; errors.As(err, &t)` | `t, ok := errors.AsType[*T](err)` | 1.26 |
+| `github.com/pkg/errors` wrapping | `fmt.Errorf("...: %w", err)` | 1.13 |
+| `go-multierror` / manual joins | `errors.Join(errs...)` | 1.20 |
+| Avoiding `fmt.Errorf` on perf grounds | Use it; it now matches `errors.New` | 1.26 |
+
+### Concurrency and runtime
+
+| Instead of (old) | Use (modern) | Since |
+|---|---|---|
+| `wg.Add(1); go func(){ defer wg.Done(); f() }()` | `wg.Go(f)` | 1.25 |
+| `var n int64; atomic.AddInt64(&n, 1)` | `var n atomic.Int64; n.Add(1)` | 1.19 |
 | `runtime.SetFinalizer` | `runtime.AddCleanup` | 1.24 |
-| `sort.Slice(s, less)` | `slices.SortFunc(s, cmp)` | 1.23 |
-| `strings.Split` in `for range` | `strings.SplitSeq` | 1.24 |
-| `strings.Fields` in `for range` | `strings.FieldsSeq` | 1.24 |
-| Manual contains loop | `slices.Contains(s, v)` | 1.21 |
-| `io.Discard` with `slog.NewTextHandler` | `slog.DiscardHandler` | 1.24 |
-| `slog.Group("k", attrs...)` with `[]slog.Attr` | `slog.GroupAttrs("k", attrs...)` | 1.25 |
-| Single `slog` handler | `slog.NewMultiHandler(h1, h2)` for fan-out | 1.26 |
-
-### Error Handling
-
-| Instead of (old) | Use (modern) | Since |
-|---|---|---|
-| `var target *T; errors.As(err, &target)` | `target, ok := errors.AsType[*T](err)` | 1.26 |
-| `errors.New("x")` vs `fmt.Errorf("x")` debate | Use either; `fmt.Errorf` now matches `errors.New` perf | 1.26 |
-
-### HTTP
-
-| Instead of (old) | Use (modern) | Since |
-|---|---|---|
-| Third-party router for method matching | `mux.HandleFunc("POST /path", h)` | 1.22 |
-| Third-party router for path params | `/items/{id}` with `r.PathValue("id")` | 1.22 |
-| Custom CSRF middleware | `http.CrossOriginProtection` | 1.25 |
-| `httputil.ReverseProxy.Director` | `httputil.ReverseProxy.Rewrite` | 1.26 |
-| Manual HTTP protocol negotiation | `Server.Protocols` / `Transport.Protocols` | 1.24 |
+| Map-based string dedup | `unique.Make(s)` | 1.23 |
+| Hand-rolled expiring cache | `weak.Pointer[T]` + `runtime.AddCleanup` | 1.24 |
+| Drain a timer channel before `Reset` | `t.Stop(); t.Reset(d)` -- no drain | 1.23 |
+| Avoiding `time.After` in loops | Safe; unreferenced timers are collected | 1.23 |
+| Manual `GOMAXPROCS` from cgroup limits | Automatic; `runtime.SetDefaultGOMAXPROCS()` to override | 1.25 |
+| `unsafe.Pointer(uintptr(p) + uintptr(n))` | `unsafe.Add(p, n)` | 1.17 |
 
 ### Testing
 
 | Instead of (old) | Use (modern) | Since |
 |---|---|---|
-| `for range b.N` | `for b.Loop()` | 1.24 |
-| `ctx, cancel := context.WithCancel(...)` in tests | `t.Context()` | 1.24 |
-| Manual working directory changes in tests | `t.Chdir(dir)` | 1.24 |
-| `time.Sleep` in concurrent tests | `testing/synctest.Test` with fake clock | 1.25 |
-| `testing/synctest.Run` | `testing/synctest.Test` | 1.25 |
-| `sink` variable to prevent optimization | `b.Loop()` keeps values alive | 1.24 |
+| `for range b.N` (+ `ResetTimer`, + sink var) | `for b.Loop()` | 1.24 |
+| `context.WithCancel` in a test | `t.Context()` | 1.24 |
+| Save/restore working directory | `t.Chdir(dir)` | 1.24 |
+| `time.Sleep` to sequence goroutines | `synctest.Test` + `synctest.Wait` | 1.25 |
+| `time.Sleep` inside a bubble | `synctest.Sleep(d)` (sleep **and** wait) | 1.27 |
+| `synctest.Run` | `synctest.Test` | 1.25 |
+| `httptest.NewServer` in a synctest bubble | `httptest.NewTestServer(t, h)` (in-memory net) | 1.27 |
+| `defer srv.Close()` on a test server | Nothing; `NewTestServer` registers cleanup | 1.27 |
+| Seeding crypto by hand for determinism | `cryptotest.SetGlobalRandom(t, seed)` | 1.26 |
+| Writing debug output to `t.TempDir()` | `t.ArtifactDir()` | 1.26 |
+
+### HTTP and net
+
+| Instead of (old) | Use (modern) | Since |
+|---|---|---|
+| Third-party router for methods/params | `mux.HandleFunc("GET /items/{id}", h)` + `r.PathValue` | 1.22 |
+| Custom CSRF middleware | `http.NewCrossOriginProtection()` | 1.25 |
+| `io.Copy(io.Discard, resp.Body)` before `Close` | Just `Close`; it drains (<=256 KiB, <=50 ms) | 1.27 |
+| `httputil.ReverseProxy.Director` | `ReverseProxy.Rewrite` | 1.26 |
+| Manual HTTP/2 wiring | `Server.Protocols` / `Transport.Protocols` | 1.24 |
+| Hand-parsing `Cookie` headers | `http.ParseCookie` / `ParseSetCookie` | 1.23 |
+| Unbounded request header parsing | `Server.MaxHeaderValueCount` (default 500) | 1.27 |
+
+### JSON
+
+| Instead of (old) | Use (modern) | Since |
+|---|---|---|
+| `omitempty` on a struct / `time.Time` / pointer | `omitzero` | 1.24 |
+| `encoding/json` for a **new** format | `encoding/json/v2` | 1.27 |
+| `json.Marshal` + `w.Write` | `json.MarshalWrite(w, v)` | 1.27 |
+| `json.NewDecoder(r).Decode(&v)` | `json.UnmarshalRead(r, &v)` | 1.27 |
+| `DisallowUnknownFields` on a Decoder | `json.RejectUnknownMembers(true)` option | 1.27 |
+| Third-party fast JSON codecs | v2 (`Unmarshal` is much faster than v1) | 1.27 |
 
 ### Crypto
 
 | Instead of (old) | Use (modern) | Since |
 |---|---|---|
-| Custom random token generation | `crypto/rand.Text()` | 1.24 |
+| Hand-rolled token generator | `crypto/rand.Text()` | 1.24 |
+| `golang.org/x/crypto/{sha3,hkdf,pbkdf2}` | `crypto/{sha3,hkdf,pbkdf2}` | 1.24 |
+| `cipher.NewGCM` + manual nonce plumbing | `cipher.NewGCMWithRandomNonce` | 1.24 |
 | `ecdsa.GenerateKey(curve, rand.Reader)` | `ecdsa.GenerateKey(curve, nil)` | 1.26 |
 | `rsa.GenerateKey(rand.Reader, bits)` | `rsa.GenerateKey(nil, bits)` | 1.26 |
-| `golang.org/x/crypto/sha3` | `crypto/sha3` | 1.24 |
-| `golang.org/x/crypto/hkdf` | `crypto/hkdf` | 1.24 |
-| `golang.org/x/crypto/pbkdf2` | `crypto/pbkdf2` | 1.24 |
-| `EncryptPKCS1v15` | `EncryptOAEP` | 1.26 |
-| `cipher.NewGCM` + manual nonce | `cipher.NewGCMWithRandomNonce` | 1.24 |
-| SHA-1 certificates | SHA-256+ certificates (SHA-1 removed in 1.24) | 1.24 |
-| RSA keys < 1024 bits | RSA keys >= 2048 bits | 1.24 |
+| `rsa.EncryptPKCS1v15` | `rsa.EncryptOAEP` | 1.26 |
+| Rolling your own hybrid encryption | `crypto/hpke` (RFC 9180) | 1.26 |
+| `tls.Config.Rand` | `cryptotest.SetGlobalRandom` | 1.27 |
+| Classical-only signatures for long-lived data | `crypto/mldsa` (FIPS 204) | 1.27 |
 
-### Filesystem
+### Filesystem and reflection
 
 | Instead of (old) | Use (modern) | Since |
 |---|---|---|
-| `os.Open` with path validation | `os.OpenRoot(dir)` + `root.Open(file)` | 1.24 |
-| Manual recursive directory copy | `os.CopyFS(dst, srcFS)` | 1.23 |
+| `filepath.Clean` + prefix checks | `os.OpenRoot(dir)` + `root.Open(name)` | 1.24 |
+| Hand-written recursive copy | `os.CopyFS(dst, srcFS)` | 1.23 |
+| `reflect.TypeOf(x)` with a static type | `reflect.TypeFor[T]()` | 1.22 |
+| `for i := range t.NumField()` | `for f := range t.Fields()` | 1.26 |
+| `v.Interface().(T)` | `reflect.TypeAssert[T](v)` | 1.25 |
 
-### Concurrency
+### Logging
 
 | Instead of (old) | Use (modern) | Since |
 |---|---|---|
-| `wg.Add(1); go func() { defer wg.Done(); f() }()` | `wg.Go(f)` | 1.25 |
-| String deduplication via maps | `unique.Make(s)` for canonical handles | 1.23 |
-| Timer drain before Reset | `t.Stop(); t.Reset(d)` -- no drain needed | 1.23 |
-| `time.After` in loops | Still works (GC-safe since 1.23), but `NewTimer` + `Reset` is better | 1.23 |
+| `logrus` / `zap` in new code | `log/slog` | 1.21 |
+| `slog.NewTextHandler(io.Discard, nil)` | `slog.DiscardHandler` | 1.24 |
+| `slog.Group("k", anySlice...)` | `slog.GroupAttrs("k", attrs...)` | 1.25 |
+| Custom tee handler | `slog.NewMultiHandler(h1, h2)` | 1.26 |
+
+### Drop the dependency
+
+| Third-party | Standard library | Since |
+|---|---|---|
+| `github.com/google/uuid`, `gofrs/uuid` | `uuid` | 1.27 |
+| `golang.org/x/exp/{slices,maps}` | `slices`, `maps` | 1.21 / 1.23 |
+| `golang.org/x/exp/constraints` | `cmp.Ordered` | 1.21 |
+| `golang.org/x/exp/rand` | `math/rand/v2` | 1.22 |
+| `golang.org/x/crypto/{sha3,hkdf,pbkdf2}` | `crypto/{sha3,hkdf,pbkdf2}` | 1.24 |
+| `gorilla/mux` for method + path routing | `net/http.ServeMux` | 1.22 |
+| A `tools.go` file with blank imports | `go get -tool` + `go tool` | 1.24 |
 
 ---
 
-## Inline Code Examples
+## Go 1.27 syntax
 
-These examples cover the most common patterns. The agent should use these patterns
-whenever writing Go code, without needing to consult reference files.
+Requires `go 1.27` in `go.mod`.
 
-### Range over Integers (Go 1.22+)
+### Generic methods
+
+A method may now declare its own type parameters, so a transform that belongs to a type
+stops leaking into the package namespace.
 
 ```go
-// OLD: for i := 0; i < n; i++ { process(i) }
-// NEW:
-for i := range n {
-    process(i)
+type List[E any] []E
+
+// Apply returns the list obtained from applying f to each element of l.
+func (l List[E]) Apply[F any](f func(E) F) List[F] {
+    r := make(List[F], len(l))
+    for i, x := range l {
+        r[i] = f(x)
+    }
+    return r
+}
+
+names := List[User]{u1, u2}.Apply(User.Name) // List[string]
+```
+
+Interface methods still cannot declare type parameters, and a generic method cannot
+implement an interface method. Anything that must satisfy an interface stays non-generic.
+
+### Promoted fields as struct-literal keys
+
+```go
+type Meta struct{ Name string }
+type Record struct {
+    Meta
+    ID int
+}
+
+r := Record{ID: 7, Name: "x"} // was: Record{ID: 7, Meta: Meta{Name: "x"}}
+```
+
+Two limits: the embedded types traversed must not be pointers, and a key may not name a
+promoted field of an embedded struct that another key sets wholesale.
+
+### Function type inference everywhere
+
+Assigning, converting, passing or returning a generic function now infers its type
+arguments from the target function type.
+
+```go
+func sortBy(less func(a, b int) int) { ... }
+
+func wire() func(a, b int) int {
+    sortBy(cmp.Compare)                     // argument
+    f := (func(a, b int) int)(cmp.Compare)  // conversion
+    _ = f
+    return cmp.Compare                      // return
 }
 ```
 
-### Loop Variables Are Per-Iteration (Go 1.22+)
+Known Go 1.27.0 compiler bug: inference in a **composite-literal element**
+(`S{less: cmp.Compare}`, a map or slice literal entry) crashes the compiler with
+`internal compiler error: ... is not assignable`. Instantiate explicitly there:
+`S{less: cmp.Compare[int]}`.
+
+---
+
+## Snippets
+
+### Iterators (1.23+)
 
 ```go
-// This is safe now -- each iteration gets its own `v`:
-for _, v := range values {
-    go func() {
-        fmt.Println(v) // unique per iteration, no data race
-    }()
-}
-// DELETE any `v := v` capture hacks -- they are no longer needed.
-```
-
-### new(expr) for Pointer Fields (Go 1.26+)
-
-```go
-type Config struct {
-    Port    *int    `json:"port,omitzero"`
-    Debug   *bool   `json:"debug,omitzero"`
-    Timeout *string `json:"timeout,omitzero"`
-}
-
-cfg := Config{
-    Port:    new(8080),
-    Debug:   new(true),
-    Timeout: new("30s"),
-}
-```
-
-### errors.AsType (Go 1.26+)
-
-```go
-// OLD:
-// var pathErr *fs.PathError
-// if errors.As(err, &pathErr) { ... }
-
-// NEW -- type-safe, no reflection, no panic risk:
-if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
-    fmt.Println("path:", pathErr.Path)
-}
-
-// Multiple error types -- variables scoped to their blocks:
-if connErr, ok := errors.AsType[*net.OpError](err); ok {
-    handleNetworkError(connErr)
-} else if dnsErr, ok := errors.AsType[*net.DNSError](err); ok {
-    handleDNSError(dnsErr)
-}
-```
-
-### Iterators (Go 1.23+)
-
-```go
-// Define a single-value iterator:
 func Reversed[V any](s []V) iter.Seq[V] {
     return func(yield func(V) bool) {
         for i := len(s) - 1; i >= 0; i-- {
@@ -213,452 +279,207 @@ func Reversed[V any](s []V) iter.Seq[V] {
     }
 }
 
-// Use with range:
-for v := range Reversed(mySlice) {
-    fmt.Println(v)
-}
+for v := range Reversed(s) { ... }
 
-// Standard library iterators:
-for v := range slices.Values(s) { }           // values only
-for i, v := range slices.Backward(s) { }      // reverse
-for chunk := range slices.Chunk(s, 3) { }     // chunked
-for k := range maps.Keys(m) { }               // map keys
-s2 := slices.Collect(slices.Values(s))         // collect into slice
-s2 := slices.Sorted(slices.Values(s))          // collect + sort
-
-// Lazy string iteration (Go 1.24+):
-for line := range strings.Lines(text) { }         // line-by-line
-for part := range strings.SplitSeq(s, ",") { }    // lazy split
-for word := range strings.FieldsSeq(s) { }        // whitespace split
+for i, v := range slices.All(s) { }      // index + value
+for v := range slices.Values(s) { }      // values
+for i, v := range slices.Backward(s) { } // reverse
+for c := range slices.Chunk(s, 3) { }    // chunks
+for k := range maps.Keys(m) { }          // keys
+sorted := slices.Sorted(maps.Keys(m))    // collect + sort
 ```
 
-### math/rand/v2 (Go 1.22+)
+### math/rand/v2 (1.22+, generic method 1.27+)
 
 ```go
-import "math/rand/v2"
-
-n := rand.IntN(100)           // random int in [0, 100)
-n := rand.N(max)              // generic -- works with any integer type
-d := rand.N(100*time.Millisecond) // works with time.Duration too
-u := rand.Uint64()            // random uint64
-// Default generator is ChaCha8 (cryptographically strong)
-// No need to seed -- auto-seeded
+n := rand.IntN(100)                  // [0, 100)
+d := rand.N(100 * time.Millisecond)  // generic: any integer-like type
+j := r.N(time.Second)                // 1.27: same, as a method on *rand.Rand
 ```
 
-### HTTP Routing (Go 1.22+)
+Default source is ChaCha8 and auto-seeded. Never call `Seed`.
+
+### HTTP routing (1.22+)
 
 ```go
 mux := http.NewServeMux()
-mux.HandleFunc("GET /api/users", listUsers)
-mux.HandleFunc("POST /api/users", createUser)
-mux.HandleFunc("GET /api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-    id := r.PathValue("id")
-    user, err := db.GetUser(id)
-    // ...
-})
-mux.HandleFunc("GET /static/{path...}", func(w http.ResponseWriter, r *http.Request) {
-    path := r.PathValue("path") // matches entire remaining path
-    http.ServeFile(w, r, filepath.Join("static", path))
-})
+mux.HandleFunc("GET /users", listUsers)          // GET also registers HEAD
+mux.HandleFunc("POST /users", createUser)
+mux.HandleFunc("GET /users/{id}", getUser)       // r.PathValue("id")
+mux.HandleFunc("GET /files/{path...}", serveAll) // rest of the path
+mux.HandleFunc("GET /health/{$}", health)        // exact, no prefix match
 ```
 
-### CSRF Protection (Go 1.25+)
+More specific patterns win; method patterns beat method-less ones.
+
+### CSRF (1.25+)
 
 ```go
-mux := http.NewServeMux()
-// ... register handlers ...
-
-protection := http.NewCrossOriginProtection()
-protection.AddTrustedOrigin("https://myapp.example.com")
-http.ListenAndServe(":8080", protection.Handler(mux))
-// Safe methods (GET, HEAD, OPTIONS) always pass through.
+p := http.NewCrossOriginProtection()
+p.AddTrustedOrigin("https://myapp.example.com")
+http.ListenAndServe(":8080", p.Handler(mux))
+// GET/HEAD/OPTIONS always pass through.
 ```
 
-### Testing: b.Loop() (Go 1.24+)
+### UUIDs (1.27+)
 
 ```go
-func BenchmarkProcess(b *testing.B) {
-    data := expensiveSetup() // runs once, not b.N times
-    for b.Loop() {           // no b.ResetTimer, no sink variable
-        process(data)        // compiler won't optimize away
-    }
-}
+import "uuid"
+
+id := uuid.New()   // v4, 122 random bits
+key := uuid.NewV7() // timestamp-prefixed: sorts by creation time -- prefer for DB keys
+u, err := uuid.Parse(s)
 ```
 
-### Testing: t.Context() (Go 1.24+)
+`UUID` is `[16]byte`: comparable, usable as a map key, and text-marshalable.
 
-```go
-func TestServer(t *testing.T) {
-    srv := startServer(t.Context()) // canceled after test, before cleanup
-    t.Cleanup(func() {
-        <-srv.Done() // wait for graceful shutdown
-    })
-    // ... test srv ...
-}
-```
-
-### Testing: synctest.Test (Go 1.25+)
-
-```go
-import "testing/synctest"
-
-func TestTimeout(t *testing.T) {
-    synctest.Test(t, func(t *testing.T) {
-        // Fake clock: time advances when all goroutines block
-        ch := make(chan int)
-        _, err := ReadWithTimeout(ch, time.Minute) // resolves instantly
-        if err == nil {
-            t.Fatal("expected timeout")
-        }
-    })
-}
-// Do NOT call t.Run, t.Parallel, or t.Deadline inside the bubble.
-```
-
-### Testing: t.Chdir, t.Attr, t.ArtifactDir
-
-```go
-func TestFileOps(t *testing.T) {
-    t.Chdir(t.TempDir()) // restored after test (Go 1.24+)
-    os.WriteFile("test.txt", []byte("hello"), 0o644)
-}
-
-func TestFeature(t *testing.T) {
-    t.Attr("team", "platform")        // metadata (Go 1.25+)
-    t.Attr("issue", "PROJ-1234")
-    dir := t.ArtifactDir()            // artifact output (Go 1.26+)
-    os.WriteFile(filepath.Join(dir, "debug.log"), logData, 0o644)
-}
-```
-
-### WaitGroup.Go (Go 1.25+)
-
-```go
-var wg sync.WaitGroup
-wg.Go(func() { result1 = fetchFromAPI() })
-wg.Go(func() { result2 = queryDatabase() })
-wg.Wait()
-```
-
-### unique Package (Go 1.23+)
-
-```go
-import "unique"
-
-type Server struct {
-    Zone unique.Handle[string]
-}
-func NewServer(zone string) Server {
-    return Server{Zone: unique.Make(zone)} // canonical reference
-}
-// Comparison is pointer-level fast: s1.Zone == s2.Zone
-```
-
-### os.Root -- Safe Filesystem (Go 1.24+)
-
-```go
-root, err := os.OpenRoot("/var/data")
-if err != nil { return err }
-defer root.Close()
-
-data, _ := root.ReadFile("config.json")      // scoped to /var/data
-root.WriteFile("out.json", data, 0o644)       // safe
-_, err = root.Open("../etc/passwd")            // ERROR: escapes root
-root.MkdirAll("a/b/c", 0o755)                 // Go 1.25+
-root.Rename("old.txt", "new.txt")             // Go 1.25+
-root.RemoveAll("temp")                        // Go 1.25+
-```
-
-### Crypto Patterns (Go 1.24+/1.26+)
-
-```go
-// Random token (Go 1.24+):
-token := crypto_rand.Text() // base32, 128+ bits
-
-// Key generation -- pass nil for rand (Go 1.26+):
-ecKey, _ := ecdsa.GenerateKey(elliptic.P256(), nil)
-rsaKey, _ := rsa.GenerateKey(nil, 2048)
-
-// SHA-3 (Go 1.24+):
-hash := sha3.Sum256(data)
-
-// GCM with auto nonce (Go 1.24+):
-block, _ := aes.NewCipher(key)
-aead, _ := cipher.NewGCMWithRandomNonce(block)
-ct := aead.Seal(nil, nil, plaintext, aad) // nonce auto-prepended
-
-// HKDF / PBKDF2 now in stdlib (Go 1.24+):
-dk := hkdf.Key(sha256.New, secret, salt, info, 32)
-dk := pbkdf2.Key([]byte(password), salt, 600000, 32, sha256.New)
-```
-
-### JSON: omitzero (Go 1.24+)
+### JSON (1.24+ / 1.27+)
 
 ```go
 type Event struct {
     Name  string    `json:"name"`
-    Start time.Time `json:"start,omitzero"` // correctly omits zero time.Time
-    End   *Info     `json:"end,omitzero"`   // omits nil pointer
+    Start time.Time `json:"start,omitzero"` // omitempty cannot omit a zero time.Time
+    Count int       `json:"count,omitempty"`
 }
-// omitzero uses IsZero() when available; omitempty uses legacy rules.
-// Prefer omitzero for struct types.
+
+// v2: stream, and reject junk instead of silently ignoring it.
+err := json.UnmarshalRead(r, &e, json.RejectUnknownMembers(true))
+err = json.MarshalWrite(w, e, jsontext.WithIndent("  "))
 ```
 
-### Logging (Go 1.24+/1.25+/1.26+)
+v2 defaults differ from v1 (nil slice -> `[]`, case-sensitive names, duplicate names and
+invalid UTF-8 rejected). Do not switch an existing wire format without reading the
+migration table in [MODERN-PATTERNS.md](references/MODERN-PATTERNS.md).
+
+### Testing (1.24+ .. 1.27+)
 
 ```go
-// Discard handler (Go 1.24+):
-logger := slog.New(slog.DiscardHandler)
+func BenchmarkProcess(b *testing.B) {
+    data := expensiveSetup() // once, not b.N times
+    for b.Loop() {           // no ResetTimer, no sink variable
+        process(data)
+    }
+}
 
-// Multi-handler fan-out (Go 1.26+):
-logger := slog.New(slog.NewMultiHandler(
+func TestTimeout(t *testing.T) {
+    synctest.Test(t, func(t *testing.T) {
+        srv := httptest.NewTestServer(t, handler) // in-memory net, auto-closed
+        resp, err := srv.Client().Get("http://www.example.com/")
+        // A time.Hour sleep in the handler resolves instantly.
+        ...
+    })
+}
+```
+
+Inside a bubble: no `t.Run`, `t.Parallel` or `t.Deadline`; use `synctest.Sleep` over
+`time.Sleep` so the system under test settles before you assert.
+
+### Safe filesystem access (1.24+)
+
+```go
+root, err := os.OpenRoot("/var/data")
+defer root.Close()
+
+data, _ := root.ReadFile("config.json")
+root.MkdirAll("a/b/c", 0o755)       // 1.25+
+root.Rename("old", "new")           // 1.25+
+_, err = root.Open("../etc/passwd") // error: escapes the root
+```
+
+### Crypto (1.24+ / 1.26+)
+
+```go
+token := rand.Text()                                // crypto/rand, base32, 128+ bits
+ecKey, _ := ecdsa.GenerateKey(elliptic.P256(), nil) // nil rand (1.26+)
+rsaKey, _ := rsa.GenerateKey(nil, 2048)
+
+block, _ := aes.NewCipher(key)
+aead, _ := cipher.NewGCMWithRandomNonce(block)      // nonce generated and prepended
+ct := aead.Seal(nil, nil, plaintext, aad)
+
+dk, _ := pbkdf2.Key(sha256.New, pw, salt, 600_000, 32) // hash first, then the password
+```
+
+### Structured logging (1.24+ .. 1.26+)
+
+```go
+logger := slog.New(slog.NewMultiHandler(         // 1.26+
     slog.NewJSONHandler(os.Stdout, nil),
     slog.NewTextHandler(logFile, nil),
 ))
-
-// GroupAttrs from a slice (Go 1.25+):
-attrs := []slog.Attr{slog.String("method", "GET"), slog.Int("status", 200)}
-logger.Info("request", slog.GroupAttrs("http", attrs...))
+logger.Info("request", slog.GroupAttrs("http", attrs...)) // 1.25+
 ```
 
-### Timer/Ticker (Go 1.23+)
+---
+
+## Toolchain
+
+`go fix ./...` applies every modernizer below; `go fix -diff ./...` previews. Treat this
+list as the checklist a reviewer will run:
+
+`any` `atomictypes` `embedlit` `errorsastype` `forvar` `hostport` `inline` `mapsloop`
+`minmax` `newexpr` `omitzero` `plusbuild` `rangeint` `reflecttypefor` `slicesbackward`
+`slicescontains` `slicessort` `stditerators` `stringsbuilder` `stringscut`
+`stringscutprefix` `stringsseq` `testingcontext` `unsafefuncs` `waitgroupgo`
+
+(`waitgroup` was renamed `waitgroupgo` and `fmtappendf` was removed in 1.27.)
 
 ```go
-// Unreferenced timers are GC'd -- safe in select loops:
-select {
-case v := <-ch:
-    process(v)
-case <-time.After(timeout):
-    log.Warn("timeout")
-}
-
-// No drain before Reset (Go 1.23+):
-t := time.NewTimer(d)
-t.Stop()
-t.Reset(newDuration)
-<-t.C
+// Deprecated: use NewFoo.
+//
+//go:fix inline
+func OldFoo() *Foo { return NewFoo() } // go fix rewrites callers
 ```
 
-### Reflect Iterators (Go 1.26+)
+Other toolchain behaviour worth relying on:
 
-```go
-typ := reflect.TypeFor[http.Client]()
-for f := range typ.Fields() {
-    fmt.Println(f.Name, f.Type)
-}
-for m := range typ.Methods() {
-    fmt.Println(m.Name, m.Type)
-}
-```
-
-### Tool Directives in go.mod (Go 1.24+)
-
-```bash
-go get -tool golang.org/x/tools/cmd/stringer
-go tool stringer -type=Color
-# No more tools.go with blank imports needed.
-```
-
-### go fix Modernization (Go 1.26+)
-
-```bash
-go fix ./...          # modernize all code
-go fix -diff ./...    # preview changes without applying
-go fix -rangeint .    # only specific fixer
-```
-
-Fixers include: `rangeint`, `bloop`, `waitgroup`, `omitzero`, `slicescontains`,
-`slicessort`, `minmax`, `stringscut`, `stringsseq`, `forvar`, `newexpr`.
+- `go test` runs the `stdversion` vet check by default (1.27): using an API newer than the
+  `go` directive is now a test failure, not a runtime surprise.
+- `go get -tool <pkg>` + `go tool <name>` replaces `tools.go`. (1.24)
+- `go doc pkg@v1.2.3`, `go doc -ex pkg`, `go doc pkg.ExampleFoo` print versioned docs and
+  example source. (1.27)
+- `go mod tidy` collapses `require` blocks to two (direct, indirect) for `go 1.27` modules.
+- `go tool trace -http=:6060` now binds localhost only; pass `0.0.0.0:6060` deliberately.
+- `/debug/pprof/goroutineleak` (and `pprof.Lookup("goroutineleak")`) reports goroutines
+  blocked on primitives no runnable goroutine can reach. (1.27)
 
 ---
 
-## Feature Availability by Version
+## What each release added
 
-### Go 1.22
-- Per-iteration loop variable scoping
-- `for i := range n` (range over integers)
-- `math/rand/v2` package
-- Enhanced `net/http.ServeMux` routing (methods, wildcards, `{param}`, `{path...}`, `{$}`)
-- `slices.Concat`, zeroing behavior for `slices.Delete`/`Compact`/`Replace`
-- `go/version` package
-- `database/sql.Null[T]` generic type
-- Range-over-func preview (`GOEXPERIMENT=rangefunc`)
-
-### Go 1.23
-- Range over function iterators (`iter.Seq`, `iter.Seq2`, `iter.Pull`)
-- `slices.All`, `Values`, `Backward`, `Collect`, `AppendSeq`, `Sorted`, `SortedFunc`, `Chunk`
-- `maps.All`, `Keys`, `Values`, `Insert`, `Collect`
-- `unique` package (value interning/canonicalization)
-- Timer/Ticker: GC-eligible without Stop; no stale values after Reset/Stop
-- `os.CopyFS`
-- `http.ParseCookie`, `http.ParseSetCookie`, `Cookie.Partitioned`
-- `slices.Repeat`
-- `structs` package (`structs.HostLayout`)
-
-### Go 1.24
-- Generic type aliases
-- `weak` package (weak pointers)
-- `runtime.AddCleanup` (replaces `SetFinalizer`)
-- Swiss Tables map implementation
-- `sync.Map` based on concurrent hash-trie
-- `os.Root` / `os.OpenRoot` (directory-scoped FS)
-- `testing.B.Loop()`, `T.Context()`, `B.Context()`, `T.Chdir()`, `B.Chdir()`
-- `testing/synctest` (experimental)
-- `slog.DiscardHandler`
-- `encoding.TextAppender`, `encoding.BinaryAppender`
-- `strings.Lines`, `SplitSeq`, `SplitAfterSeq`, `FieldsSeq`, `FieldsFuncSeq` (also in `bytes`)
-- `crypto/sha3`, `crypto/hkdf`, `crypto/pbkdf2`, `crypto/mlkem`
-- `crypto/rand.Text()`, `crypto/rand.Read` never fails
-- `cipher.NewGCMWithRandomNonce`
-- JSON `omitzero` struct tag
-- `http.Server.Protocols`, `http.Transport.Protocols`
-- Tool directives in `go.mod` (`go get -tool`)
-- `go build/test -json` flag
-- Build binary embeds VCS version info
-- FIPS 140-3 support (`GODEBUG=fips140=on|only`)
-
-### Go 1.25
-- `testing/synctest.Test` (GA, replaces experimental `Run`)
-- `encoding/json/v2` (experimental, `GOEXPERIMENT=jsonv2`)
-- Container-aware GOMAXPROCS (respects cgroup CPU limits)
-- Green Tea GC (experimental, `GOEXPERIMENT=greenteagc`)
-- `http.CrossOriginProtection` (CSRF protection)
-- `sync.WaitGroup.Go()`
-- `trace.FlightRecorder`
-- `os.Root` expanded methods (`Chmod`, `Chown`, `MkdirAll`, `RemoveAll`, `Rename`, `ReadFile`, `WriteFile`, `Symlink`, `Readlink`, `Link`)
-- `reflect.TypeAssert[T]`
-- `T.Attr()`, `T.Output()`, `B.Attr()`, `B.Output()`
-- `slog.GroupAttrs`
-- `hash.Cloner` interface
-- `io/fs.ReadLinkFS`
-- `runtime.SetDefaultGOMAXPROCS()`
-
-### Go 1.26
-- `new(expr)` -- `new` accepts expressions, not just types
-- Recursive generic type constraints
-- `errors.AsType[T]` -- generic, type-safe error checking
-- Green Tea GC enabled by default
-- Faster cgo (~30%), faster small allocations (~30%), optimized `io.ReadAll` (~2x)
-- `fmt.Errorf` performance matches `errors.New`
-- `crypto/hpke` (Hybrid Public Key Encryption, RFC 9180)
-- Reader-less crypto (rand parameter ignored; use `nil`)
-- `testing/cryptotest.SetGlobalRandom` for deterministic testing
-- `simd/archsimd` (experimental, `GOEXPERIMENT=simd`, amd64 only)
-- `runtime/secret` (experimental, `GOEXPERIMENT=runtimesecret`)
-- Goroutine leak profile (experimental, `GOEXPERIMENT=goroutineleakprofile`)
-- `bytes.Buffer.Peek(n)`
-- `reflect.Type.Fields()`, `Methods()`, `Ins()`, `Outs()` iterators
-- `reflect.Value.Fields()`, `Methods()` iterators
-- `slog.NewMultiHandler`
-- `T.ArtifactDir()`, `B.ArtifactDir()`
-- `net.Dialer.DialTCP/UDP/IP/Unix` with context
-- `netip.Prefix.Compare`
-- `os.Process.WithHandle`
-- `signal.NotifyContext` cause includes signal info
-- `httptest.Server.Client` redirects `example.com` to test server
-- `testing/cryptotest.SetGlobalRandom`
-- `go fix` overhauled with modernization analyzers
-- `cmd/doc` removed (use `go doc`)
+- **1.22** per-iteration loop vars; `range` over int; `math/rand/v2`; `ServeMux` methods,
+  `{param}`, `{path...}`, `{$}`; `slices.Concat`; `reflect.TypeFor`; `go/version`.
+- **1.23** `iter` + range-over-func; `slices`/`maps` iterators; `unique`; GC-safe timers,
+  no drain before `Reset`; `os.CopyFS`; `http.ParseCookie`.
+- **1.24** generic type aliases; `weak`; `runtime.AddCleanup`; Swiss-table maps; `os.Root`;
+  `b.Loop`, `t.Context`, `t.Chdir`; `slog.DiscardHandler`; `strings.Lines`/`SplitSeq`/
+  `FieldsSeq`; `crypto/{sha3,hkdf,pbkdf2,mlkem}`; `rand.Text`; `NewGCMWithRandomNonce`;
+  `omitzero`; `Server.Protocols`; tool directives; FIPS 140-3.
+- **1.25** `synctest.Test`; container-aware `GOMAXPROCS`; `http.CrossOriginProtection`;
+  `sync.WaitGroup.Go`; `trace.FlightRecorder`; `os.Root` write methods;
+  `reflect.TypeAssert`; `t.Attr`/`t.Output`; `slog.GroupAttrs`; `io/fs.ReadLinkFS`.
+- **1.26** `new(expr)`; `errors.AsType`; Green Tea GC on by default; `crypto/hpke`;
+  reader-less crypto; `bytes.Buffer.Peek`; `reflect` type/value iterators;
+  `slog.NewMultiHandler`; `t.ArtifactDir`; `go fix` modernizers; `ReverseProxy.Rewrite`.
+- **1.27** generic methods; promoted-field literal keys; generalized function type
+  inference; `uuid`; `encoding/json/v2` + `jsontext` GA; `crypto/mldsa`;
+  `strings`/`bytes.CutLast`; `synctest.Sleep`; `httptest.NewTestServer`;
+  `math/rand/v2 Rand.N`; `url.Clone`; `maphash.Hasher`; `big.Int.Divide`;
+  goroutine-leak profile GA; Unicode 17.
 
 ---
 
-## JSON Patterns
+## Free performance
 
-### Current Stable (encoding/json v1)
+Automatic -- do not hand-optimize around them.
 
-```go
-// Use omitzero for struct fields (Go 1.24+)
-type Event struct {
-    Name    string    `json:"name"`
-    Start   time.Time `json:"start,omitzero"`   // omits zero time.Time
-    Count   int       `json:"count,omitempty"`   // omits 0
-    Details *Info     `json:"details,omitzero"`  // omits nil pointer
-}
-```
-
-`omitzero` checks `IsZero()` if available, otherwise checks for the zero value of the type.
-`omitempty` uses legacy emptiness rules (0, "", nil, false, empty slice/map).
-Prefer `omitzero` for struct types, especially `time.Time`.
-
-### Experimental v2 (`GOEXPERIMENT=jsonv2`, Go 1.25+)
-
-Key behavioral differences from v1:
-- Nil slices marshal to `[]` (not `null`); use `FormatNilSliceAsNull(true)` for v1 behavior
-- Nil maps marshal to `{}` (not `null`); use `FormatNilMapAsNull(true)` for v1 behavior
-- Case-sensitive field matching by default; use `MatchCaseInsensitiveNames(true)` for v1 behavior
-- Duplicate fields rejected by default; use `AllowDuplicateNames(true)` for v1 behavior
-- Byte arrays marshal to base64 (not number arrays)
-- Unmarshaling is 2.7x -- 10.2x faster than v1
-
----
-
-## HTTP Routing Patterns (Go 1.22+)
-
-```go
-mux := http.NewServeMux()
-
-mux.HandleFunc("GET /users", listUsers)           // method matching
-mux.HandleFunc("POST /users", createUser)          // GET also registers HEAD
-mux.HandleFunc("GET /users/{id}", getUser)         // path parameter
-mux.HandleFunc("DELETE /users/{id}", deleteUser)
-mux.HandleFunc("GET /files/{path...}", serveFile)  // wildcard rest
-mux.HandleFunc("GET /exact/{$}", exactOnly)        // exact match (no prefix)
-
-func getUser(w http.ResponseWriter, r *http.Request) {
-    id := r.PathValue("id")  // extract path parameter
-    // ...
-}
-```
-
-Precedence: more specific patterns win. Method patterns beat non-method patterns.
-Patterns with `{` and `}` are interpreted as wildcards; escape if needed.
-
----
-
-## Timer/Ticker Patterns (Go 1.23+)
-
-```go
-// Safe: unreferenced timers are GC'd (Go 1.23+)
-select {
-case <-ch:
-    // handle
-case <-time.After(timeout):
-    // timeout
-}
-
-// Reuse timer safely -- no channel drain needed (Go 1.23+)
-t := time.NewTimer(d)
-// ... later ...
-t.Stop()
-t.Reset(newDuration)
-<-t.C
-```
-
----
-
-## Key GODEBUG Settings
-
-| Setting | Default | Controls | Removal |
-|---|---|---|---|
-| `httpmuxgo121` | `0` | Revert to Go 1.21 ServeMux routing | -- |
-| `asynctimerchan` | `0` | Timer channel buffering (0=unbuffered) | Go 1.27 |
-| `randseednop` | `1` | `math/rand.Seed` is a no-op | -- |
-| `fips140` | `off` | FIPS 140-3 mode (`off`/`on`/`only`) | -- |
-| `cryptocustomrand` | `0` | Honor custom rand in crypto funcs | Future |
-| `httpcookiemaxnum` | `3000` | Max cookies per HTTP request | -- |
-| `containermaxprocs` | `1` | Cgroup CPU limits for GOMAXPROCS | -- |
-| `updatemaxprocs` | `1` | Auto-update GOMAXPROCS from cgroup | -- |
-
----
-
-## Performance Notes
-
-- **Maps**: Swiss Tables since Go 1.24 (~30% faster for large maps, ~35% for pre-sized).
-- **sync.Map**: Hash-trie since Go 1.24 (~49% faster geomean, especially modifications).
-- **GC**: Green Tea GC default in Go 1.26 (10-40% less GC overhead).
-- **Allocations**: Size-specialized malloc in Go 1.26 (~30% faster small allocs).
-- **cgo**: ~30% less overhead in Go 1.26.
-- **io.ReadAll**: ~2x faster, ~50% less memory in Go 1.26.
-- **fmt.Errorf**: Now matches `errors.New` for non-formatted strings in Go 1.26.
-
-These are automatic -- no code changes needed.
+- Maps: Swiss Tables since 1.24 (~30% faster; ~35% when pre-sized).
+- `sync.Map`: hash-trie since 1.24 (~49% faster geomean).
+- GC: Green Tea default since 1.26 (10--40% less GC overhead, more on Ice Lake / Zen 4+).
+- cgo call overhead ~30% lower, `io.ReadAll` ~2x faster on ~half the memory, and
+  `fmt.Errorf` matches `errors.New` for unformatted strings -- all since 1.26.
+- Allocation: size-specialized malloc in 1.27 makes small (<80 B) allocations up to 30%
+  cheaper, ~1% overall in allocation-heavy programs, for ~60 KB of binary size.
+- `compress/flate` is faster in 1.27 -- and its **bytes changed**, so golden-file tests
+  covering `gzip`, `zlib`, `zip` or `png` output may need regenerating. Same for
+  `unicode`-dependent goldens (Unicode 15 -> 17).
